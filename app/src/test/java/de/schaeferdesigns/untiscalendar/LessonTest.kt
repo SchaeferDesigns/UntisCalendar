@@ -33,7 +33,6 @@ class LessonTest {
         assertEquals("A101", math.location)
         assertEquals(LocalTime.of(7, 45), math.start)
         assertEquals(LocalTime.of(9, 15), math.end)
-        assertEquals("1+2", math.key)
         assertTrue(math.description.contains("Lehrer: Müller"))
     }
 
@@ -53,6 +52,18 @@ class LessonTest {
         assertTrue(english.description.contains("Statt Raum: B2"))
         assertTrue(english.description.contains("Statt Lehrer: MAI"))
         assertTrue(english.description.contains("Raumtausch"))
+    }
+
+    @Test
+    fun selfStudyCountsAsCancelled() {
+        val json = JSONArray(
+            """[{"id":9,"date":20261005,"startTime":1410,"endTime":1455,"code":"irregular",
+                 "su":[{"id":1,"name":"GEO","longname":"Geographie"}],"ro":[{"id":3,"name":"V04"}],
+                 "substText":"eigenverantwortliches Arbeiten"}]"""
+        )
+        val lesson = Lesson.parse(json).single()
+        assertTrue(lesson.cancelled)
+        assertEquals("ENTFALL: Geographie", lesson.title)
     }
 
     @Test

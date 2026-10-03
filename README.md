@@ -6,11 +6,14 @@ Android App, die den WebUntis Stundenplan automatisch in einen Google Kalender �
 
 1. Login mit Untis Benutzername und Passwort (JSON-RPC API von WebUntis)
 2. Abgleich jede Stunde im Hintergrund und per Knopfdruck
-3. Ausgefallene Stunden bleiben stehen und heißen "ENTFALL: Fach"
+3. Ausgefallene Stunden bleiben stehen und heißen "ENTFALL: Fach". "Eigenverantwortliches Arbeiten" zählt ebenfalls als Entfall
 4. Vertretungen, Raumänderungen und Hinweise stehen in der Beschreibung
 5. Doppelstunden werden zu einem Eintrag zusammengefasst
 6. Keine Erinnerungen an den Einträgen
-7. Passwort liegt verschlüsselt im Android Keystore, nichts verlässt das Handy außer der Anfrage an Untis
+7. Aktuelle und nächste Woche werden immer komplett eingetragen. Tage, die Untis noch nicht freigibt, kommen aus dem A/B Stundenplan und werden ersetzt, sobald Untis sie liefert
+8. A/B Woche wird aus den echten Untis Daten erkannt, Ferien und Feiertage kommen aus Untis
+9. Der Stundenplan lernt aus echten Untis Tagen mit, Einmaltermine und Vertretungen werden dabei ignoriert
+10. Passwort liegt verschlüsselt im Android Keystore, nichts verlässt das Handy außer der Anfrage an Untis
 
 ## Einrichtung
 

@@ -16,9 +16,6 @@ import java.time.format.DateTimeFormatter
 
 object SyncRunner {
 
-    /** How many days ahead are requested. The school decides how much it actually returns. */
-    private const val DAYS_AHEAD = 13L
-
     private val mutex = Mutex()
 
     suspend fun sync(context: Context): String = mutex.withLock {
@@ -43,8 +40,16 @@ object SyncRunner {
             throw IllegalStateException("Kalenderberechtigung fehlt. Bitte App öffnen.")
         }
 
+        // Current week and the following one, so the next week is already filled in on the weekend.
         val today = LocalDate.now(CalendarStore.ZONE)
-        val (lessons, fetchedDates) = fetch(settings, today, today.plusDays(DAYS_AHEAD))
+        val end = WeekPlanner.monday(today).plusWeeks(2).minusDays(1)
+        val dates = dates(today, end)
+        val (real, holidays) = fetch(settings, dates)
+
+        val templates = TemplateStore(context)
+        val planner = WeekPlanner(templates.load(), templates.weekOffset)
+        val planned = planner.plan(dates, real, holidays)
+        val desired = withKeys(planned)
 
         val store = CalendarStore(context)
         var state = SyncState.load(context)
@@ -54,12 +59,12 @@ object SyncRunner {
             state = SyncState(settings.calendarId, mutableMapOf())
         }
 
-        val desired = Lesson.merge(lessons).associateBy { it.key }
         var added = 0
         var changed = 0
         var removed = 0
 
-        val obsolete = state.entries.filter { (key, e) -> e.date in fetchedDates && key !in desired }
+        val window = dates.toSet()
+        val obsolete = state.entries.filter { (key, e) -> e.date in window && key !in desired }
         for ((key, entry) in obsolete) {
             store.delete(entry.eventId)
             state.entries.remove(key)
@@ -84,32 +89,60 @@ object SyncRunner {
         // Past lessons stay in the calendar, but are no longer tracked.
         state.entries.entries.removeIf { it.value.date.isBefore(today.minusDays(7)) }
         state.save(context)
+        templates.save(planner.templates, planner.weekOffset)
 
+        val confirmedUntil = planned.filter { it.plannedWeek == null }.maxOfOrNull { it.date }
         val time = LocalDateTime.now(CalendarStore.ZONE).format(DateTimeFormatter.ofPattern("dd.MM. HH:mm"))
-        return "Zuletzt synchronisiert: $time Uhr\n${desired.size} Einträge, $added neu, $changed geändert, $removed entfernt"
+        val day = DateTimeFormatter.ofPattern("dd.MM.")
+        return buildString {
+            append("Zuletzt synchronisiert: $time Uhr\n")
+            append("Diese Woche: ${planner.weekType(today)} Woche\n")
+            if (confirmedUntil != null) append("Untis Daten bis ${confirmedUntil.format(day)}, danach Stundenplan\n")
+            append("${desired.size} Einträge, $added neu, $changed geändert, $removed entfernt")
+        }
     }
 
-    private fun fetch(settings: Settings, start: LocalDate, end: LocalDate): Pair<List<Lesson>, Set<LocalDate>> {
+    /** One key per date and start time, so a planned entry turns into the real one in place. */
+    private fun withKeys(lessons: List<Lesson>): Map<String, Lesson> {
+        val result = linkedMapOf<String, Lesson>()
+        for (lesson in lessons) {
+            val base = "${lesson.date}T${lesson.start}"
+            var key = base
+            var n = 2
+            while (key in result) key = "$base#${n++}"
+            result[key] = lesson
+        }
+        return result
+    }
+
+    private fun fetch(settings: Settings, dates: List<LocalDate>): Pair<Map<LocalDate, List<Lesson>>, Set<LocalDate>> {
+        val start = dates.first()
+        val end = dates.last()
         val client = UntisClient(settings.server, settings.school)
         client.login(settings.username, settings.password)
         try {
-            return try {
-                Lesson.parse(client.timetable(start, end)) to dates(start, end).toSet()
+            val holidays = try {
+                client.holidays(start, end)
+            } catch (_: UntisException) {
+                emptySet()
+            }
+            val real = try {
+                val lessons = Lesson.parse(client.timetable(start, end)).groupBy { it.date }
+                dates.associateWith { lessons[it].orEmpty() }
             } catch (rangeError: UntisException) {
                 // Some schools reject ranges reaching beyond the released days. Ask day by day instead.
-                val lessons = mutableListOf<Lesson>()
-                val ok = mutableSetOf<LocalDate>()
-                for (day in dates(start, end)) {
+                val days = mutableMapOf<LocalDate, List<Lesson>>()
+                for (day in dates) {
                     try {
-                        lessons += Lesson.parse(client.timetable(day, day))
-                        ok += day
+                        days[day] = Lesson.parse(client.timetable(day, day))
                     } catch (_: UntisException) {
                         // Day not released yet.
                     }
                 }
-                if (ok.isEmpty()) throw rangeError
-                lessons to ok
+                if (days.isEmpty()) throw rangeError
+                days
             }
+            return real to holidays
         } finally {
             client.logout()
         }
@@ -117,6 +150,24 @@ object SyncRunner {
 
     private fun dates(start: LocalDate, end: LocalDate) =
         generateSequence(start) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }.toList()
+}
+
+/** Persists the learned regular timetable and the A/B correction. */
+class TemplateStore(context: Context) {
+    private val prefs = context.getSharedPreferences("template", Context.MODE_PRIVATE)
+
+    val weekOffset: Int get() = prefs.getInt("weekOffset", 0)
+
+    fun load(): MutableMap<String, List<Slot>> =
+        prefs.getString("templates", null)?.let { WeekPlanner.fromJson(it) }
+            ?: DefaultTimetable.templates.toMutableMap()
+
+    fun save(templates: Map<String, List<Slot>>, weekOffset: Int) {
+        prefs.edit()
+            .putString("templates", WeekPlanner.toJson(templates))
+            .putInt("weekOffset", weekOffset)
+            .apply()
+    }
 }
 
 data class SyncEntry(val eventId: Long, val hash: String, val date: LocalDate)

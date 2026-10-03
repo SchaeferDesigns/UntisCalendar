@@ -7,7 +7,6 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 data class Lesson(
-    val ids: List<Long>,
     val date: LocalDate,
     val start: LocalTime,
     val end: LocalTime,
@@ -20,9 +19,9 @@ data class Lesson(
     val irregular: Boolean,
     val exam: Boolean,
     val notes: List<String>,
+    /** Set when the entry comes from the regular timetable ('A' or 'B') and not from Untis. */
+    val plannedWeek: Char? = null,
 ) {
-    /** Stable key used to find the calendar event belonging to this lesson. */
-    val key: String get() = ids.joinToString("+")
 
     val title: String
         get() = when {
@@ -44,7 +43,11 @@ data class Lesson(
             if (originalRooms.isNotEmpty()) add("Statt Raum: " + originalRooms.joinToString(", "))
             addAll(notes)
             add("")
-            add("Automatisch aus Untis übernommen")
+            if (plannedWeek != null) {
+                add("Laut Stundenplan ($plannedWeek Woche), noch nicht von Untis bestätigt")
+            } else {
+                add("Automatisch aus Untis übernommen")
+            }
         }.joinToString("\n")
 
     /** Changes whenever anything visible in the calendar entry changes. */
@@ -78,13 +81,12 @@ data class Lesson(
                 ?: o.optString("activityType").takeIf { it.isNotBlank() }
                 ?: "Unterricht"
 
-            val notes = listOf("substText", "info", "lstext")
-                .map { o.optString(it).trim() }
-                .filter { it.isNotEmpty() && it != subject }
-                .distinct()
+            val texts = listOf("substText", "info", "lstext").map { o.optString(it).trim() }
+            val notes = texts.filter { it.isNotEmpty() && it != subject }.distinct()
+            // At this school "eigenverantwortliches Arbeiten" means the lesson does not take place.
+            val selfStudy = texts.any { it.contains("eigenverantwortlich", ignoreCase = true) }
 
             return Lesson(
-                ids = listOf(o.optLong("id")),
                 date = date,
                 start = start,
                 end = end,
@@ -93,7 +95,7 @@ data class Lesson(
                 originalRooms = originalNames(o.optJSONArray("ro")),
                 teachers = names(o.optJSONArray("te"), preferLong = true),
                 originalTeachers = originalNames(o.optJSONArray("te")),
-                cancelled = o.optString("code") == "cancelled",
+                cancelled = o.optString("code") == "cancelled" || selfStudy,
                 irregular = o.optString("code") == "irregular",
                 exam = o.optString("lstype") == "ex",
                 notes = notes,
@@ -107,7 +109,7 @@ data class Lesson(
             for (lesson in sorted) {
                 val last = result.lastOrNull()
                 if (last != null && last.canMergeWith(lesson)) {
-                    result[result.lastIndex] = last.copy(ids = last.ids + lesson.ids, end = lesson.end)
+                    result[result.lastIndex] = last.copy(end = lesson.end)
                 } else {
                     result += lesson
                 }
