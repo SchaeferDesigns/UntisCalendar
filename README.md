@@ -11,7 +11,7 @@ Android App, die den WebUntis Stundenplan automatisch in einen Google Kalender �
 5. Doppelstunden werden zu einem Eintrag zusammengefasst
 6. Keine Erinnerungen an den Einträgen
 7. Aktuelle und nächste Woche werden immer komplett eingetragen. Tage, die Untis noch nicht freigibt, kommen aus dem A/B Stundenplan und werden ersetzt, sobald Untis sie liefert
-8. A/B Woche wird aus den echten Untis Daten erkannt, Ferien und Feiertage kommen aus Untis
+8. A und B Woche wechseln strikt ab (KW 41 / 2026 ist B), Ferien und Feiertage kommen aus Untis
 9. Der Stundenplan lernt aus echten Untis Tagen mit, Einmaltermine und Vertretungen werden dabei ignoriert
 10. Passwort liegt verschlüsselt im Android Keystore, nichts verlässt das Handy außer der Anfrage an Untis
 

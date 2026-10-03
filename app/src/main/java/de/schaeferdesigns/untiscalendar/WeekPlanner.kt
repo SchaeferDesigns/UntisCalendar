@@ -25,16 +25,13 @@ data class Slot(
 
 /**
  * Decides what belongs in the calendar for every day: real Untis data where the school has
- * released it, otherwise the regular A/B timetable. Also detects the A/B week from real data
- * and keeps the regular timetable up to date with what Untis delivers.
+ * released it, otherwise the regular A/B timetable. A and B strictly alternate every week.
+ * Also keeps the regular timetable up to date with what Untis delivers.
  */
-class WeekPlanner(
-    val templates: MutableMap<String, List<Slot>>,
-    var weekOffset: Int,
-) {
+class WeekPlanner(val templates: MutableMap<String, List<Slot>>) {
 
     fun weekType(date: LocalDate): Char {
-        val weeks = ChronoUnit.WEEKS.between(REFERENCE_A_MONDAY, monday(date)) + weekOffset
+        val weeks = ChronoUnit.WEEKS.between(REFERENCE_A_MONDAY, monday(date))
         return if (Math.floorMod(weeks, 2L) == 0L) 'A' else 'B'
     }
 
@@ -54,7 +51,6 @@ class WeekPlanner(
         }.toSet()
 
         val schoolDays = confirmed.filter { isSchoolDay(it) && it !in holidays && merged[it]!!.isNotEmpty() }
-        detectWeekType(schoolDays, merged)
         schoolDays.forEach { learn(it, merged[it]!!) }
 
         return dates.flatMap { d ->
@@ -67,21 +63,6 @@ class WeekPlanner(
     }
 
     private fun slots(week: Char, date: LocalDate) = templates[key(week, date)].orEmpty()
-
-    /** Compares real days with both timetables and corrects the A/B order if needed. */
-    private fun detectWeekType(days: List<LocalDate>, real: Map<LocalDate, List<Lesson>>) {
-        for ((monday, weekDays) in days.groupBy { monday(it) }.toSortedMap()) {
-            val score = weekDays.sumOf { d ->
-                val minutes = minutes(real[d]!!.map { it.start to it.end })
-                similarity(minutes, minutes(slots('A', d).map { it.start to it.end })) -
-                    similarity(minutes, minutes(slots('B', d).map { it.start to it.end }))
-            }
-            if (score == 0) continue
-            val detected = if (score > 0) 'A' else 'B'
-            if (weekType(monday) != detected) weekOffset += 1
-            return
-        }
-    }
 
     /** Takes over the real day as new regular timetable, without one-off changes. */
     private fun learn(date: LocalDate, lessons: List<Lesson>) {
@@ -121,12 +102,6 @@ class WeekPlanner(
         fun isSchoolDay(date: LocalDate) = date.dayOfWeek.value <= 5
 
         fun key(week: Char, date: LocalDate) = "$week${date.dayOfWeek.value}"
-
-        private fun minutes(ranges: List<Pair<LocalTime, LocalTime>>): Set<Int> =
-            ranges.flatMap { (s, e) -> (s.toSecondOfDay() / 60 until e.toSecondOfDay() / 60) }.toSet()
-
-        private fun similarity(a: Set<Int>, b: Set<Int>): Int =
-            (a intersect b).size - (a - b).size - (b - a).size
 
         fun toJson(templates: Map<String, List<Slot>>): String {
             val json = JSONObject()

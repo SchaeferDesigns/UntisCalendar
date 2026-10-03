@@ -47,7 +47,7 @@ object SyncRunner {
         val (real, holidays) = fetch(settings, dates)
 
         val templates = TemplateStore(context)
-        val planner = WeekPlanner(templates.load(), templates.weekOffset)
+        val planner = WeekPlanner(templates.load())
         val planned = planner.plan(dates, real, holidays)
         val desired = withKeys(planned)
 
@@ -92,7 +92,7 @@ object SyncRunner {
         // Past lessons stay in the calendar, but are no longer tracked.
         state.entries.entries.removeIf { it.value.date.isBefore(today.minusDays(7)) }
         state.save(context)
-        templates.save(planner.templates, planner.weekOffset)
+        templates.save(planner.templates)
 
         val confirmedUntil = planned.filter { it.plannedWeek == null }.maxOfOrNull { it.date }
         val time = LocalDateTime.now(CalendarStore.ZONE).format(DateTimeFormatter.ofPattern("dd.MM. HH:mm"))
@@ -155,21 +155,16 @@ object SyncRunner {
         generateSequence(start) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }.toList()
 }
 
-/** Persists the learned regular timetable and the A/B correction. */
+/** Persists the learned regular timetable. */
 class TemplateStore(context: Context) {
     private val prefs = context.getSharedPreferences("template", Context.MODE_PRIVATE)
-
-    val weekOffset: Int get() = prefs.getInt("weekOffset", 0)
 
     fun load(): MutableMap<String, List<Slot>> =
         prefs.getString("templates", null)?.let { WeekPlanner.fromJson(it) }
             ?: DefaultTimetable.templates.toMutableMap()
 
-    fun save(templates: Map<String, List<Slot>>, weekOffset: Int) {
-        prefs.edit()
-            .putString("templates", WeekPlanner.toJson(templates))
-            .putInt("weekOffset", weekOffset)
-            .apply()
+    fun save(templates: Map<String, List<Slot>>) {
+        prefs.edit().putString("templates", WeekPlanner.toJson(templates)).apply()
     }
 }
 

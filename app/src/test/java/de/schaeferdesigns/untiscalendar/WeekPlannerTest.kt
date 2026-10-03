@@ -8,7 +8,7 @@ import java.time.LocalTime
 
 class WeekPlannerTest {
 
-    private fun planner() = WeekPlanner(DefaultTimetable.templates.toMutableMap(), 0)
+    private fun planner() = WeekPlanner(DefaultTimetable.templates.toMutableMap())
 
     private fun week(monday: LocalDate) = (0L..4L).map { monday.plusDays(it) }
 
@@ -59,17 +59,6 @@ class WeekPlannerTest {
         val monday = LocalDate.of(2026, 10, 26)
         val lessons = planner().plan(week(monday), emptyMap(), week(monday).toSet())
         assertTrue(lessons.isEmpty())
-    }
-
-    @Test
-    fun detectsShiftedWeekFromRealData() {
-        // Wednesday of a week the counter calls B, but Untis shows physics in period 10 and 11 (A week).
-        val wednesday = LocalDate.of(2026, 10, 7)
-        val p = planner()
-        val day = DefaultTimetable.templates.getValue("A3").map { it.toLesson(wednesday, 'A').copy(plannedWeek = null) }
-        p.plan(listOf(wednesday), mapOf(wednesday to day), emptySet())
-        assertEquals('A', p.weekType(wednesday))
-        assertEquals(1, p.weekOffset)
     }
 
     @Test
