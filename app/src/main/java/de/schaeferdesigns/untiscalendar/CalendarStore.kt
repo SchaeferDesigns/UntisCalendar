@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
+import android.provider.CalendarContract.Reminders
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -52,6 +53,13 @@ class CalendarStore(context: Context) {
             arrayOf(Events._ID, Events.DELETED),
             null, null, null
         )?.use { c -> c.moveToFirst() && c.getInt(1) == 0 } ?: false
+
+    /**
+     * Google adds the calendar's default notifications to new events on its own.
+     * Removing them keeps the lessons silent. Returns how many were removed.
+     */
+    fun removeReminders(eventId: Long): Int =
+        resolver.delete(Reminders.CONTENT_URI, "${Reminders.EVENT_ID} = ?", arrayOf(eventId.toString()))
 
     fun delete(eventId: Long) {
         resolver.delete(ContentUris.withAppendedId(Events.CONTENT_URI, eventId), null, null)

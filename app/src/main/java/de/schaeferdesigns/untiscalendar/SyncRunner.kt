@@ -86,6 +86,9 @@ object SyncRunner {
             }
         }
 
+        // Runs on every sync, because Google may attach default notifications after the event was synced.
+        state.entries.values.filter { !it.date.isBefore(today) }.forEach { store.removeReminders(it.eventId) }
+
         // Past lessons stay in the calendar, but are no longer tracked.
         state.entries.entries.removeIf { it.value.date.isBefore(today.minusDays(7)) }
         state.save(context)
