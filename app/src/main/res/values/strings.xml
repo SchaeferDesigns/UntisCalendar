@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">Untis Kalender</string>
+    <string name="intro">Überträgt deinen Untis Stundenplan automatisch in deinen Google Kalender. Ausgefallene Stunden werden mit ENTFALL markiert.</string>
+    <string name="section_untis">Untis Zugang</string>
+    <string name="server">Server</string>
+    <string name="school">Schule (Login Name)</string>
+    <string name="username">Benutzername</string>
+    <string name="password">Passwort</string>
+    <string name="password_saved">Passwort gespeichert (leer lassen zum Behalten)</string>
+    <string name="section_calendar">Kalender</string>
+    <string name="calendar_hint">Tipp: Lege in Google Calendar einen eigenen Kalender \"Untis\" an und wähle ihn hier aus. So kannst du die Stunden mit einem Klick ein und ausblenden. Stelle bei diesem Kalender die Standard Benachrichtigungen auf \"keine\".</string>
+    <string name="reload_calendars">Kalenderliste neu laden</string>
+    <string name="auto_sync">Automatisch jede Stunde abgleichen</string>
+    <string name="sync_now">Speichern und jetzt synchronisieren</string>
+    <string name="syncing">Synchronisiere…</string>
+    <string name="removing">Entferne Einträge…</string>
+    <string name="remove_all">Alle Untis Einträge aus dem Kalender entfernen</string>
+    <string name="remove_title">Einträge entfernen?</string>
+    <string name="remove_message">Alle von dieser App angelegten kommenden Einträge werden gelöscht und der automatische Abgleich wird ausgeschaltet.</string>
+    <string name="remove_confirm">Entfernen</string>
+    <string name="permission_missing">Ohne Kalenderberechtigung kann die App keine Einträge anlegen. Bitte in den Android Einstellungen erlauben.</string>
+    <string name="no_calendar">Bitte zuerst einen Kalender auswählen.</string>
+    <string name="missing_login">Bitte Benutzername und Passwort eingeben.</string>
+</resources>
