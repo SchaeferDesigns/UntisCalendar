@@ -8,7 +8,7 @@
     <string name="password">Passwort</string>
     <string name="password_saved">Passwort gespeichert (leer lassen zum Behalten)</string>
     <string name="section_calendar">Kalender</string>
-    <string name="calendar_hint">Tipp: Lege in Google Calendar einen eigenen Kalender \"Untis\" an und wähle ihn hier aus. So kannst du die Stunden mit einem Klick ein und ausblenden. Stelle bei diesem Kalender die Standard Benachrichtigungen auf \"keine\". Kalender, die auf dem Handy noch nicht synchronisiert werden, schaltet die App beim Speichern automatisch ein.</string>
+    <string name="calendar_hint">Tipp: Lege in Google Calendar einen eigenen Kalender \"Untis\" an und wähle ihn hier aus. So kannst du die Stunden mit einem Klick ein und ausblenden. Stelle bei diesem Kalender die Standard Benachrichtigungen auf \"keine\". Kalender, die auf dem Handy noch nicht synchronisiert werden, schaltet die App beim Speichern automatisch ein. Fehlt ein Kalender ganz, in der Google Kalender App unter Einstellungen beim Konto den Kalender antippen und \"Synchronisieren\" einschalten, danach hier neu laden.</string>
     <string name="reload_calendars">Kalender von Google neu laden</string>
     <string name="loading_calendars">Lade Kalenderliste von Google…</string>
     <string name="calendars_loaded">%1$d Kalender gefunden. Fehlt einer, kurz warten und erneut laden.</string>

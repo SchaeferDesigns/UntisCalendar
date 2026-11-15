@@ -20,7 +20,14 @@ data class CalendarInfo(
     val accountType: String,
     val synced: Boolean,
 ) {
-    override fun toString() = if (synced) "$name ($accountName)" else "$name ($accountName, nicht synchronisiert)"
+    /** The account's main calendar is named after the account itself. */
+    val isMain: Boolean get() = name.equals(accountName, ignoreCase = true)
+
+    override fun toString() = buildString {
+        append(if (isMain) "Hauptkalender" else name)
+        append("  ·  ").append(accountName)
+        if (!synced) append("  (nicht synchronisiert)")
+    }
 }
 
 /** Reads and writes events through the Android calendar provider (synced to Google by Android). */
@@ -29,27 +36,35 @@ class CalendarStore(context: Context) {
     private val resolver = context.contentResolver
 
     /**
-     * All calendars the app can write to, of every account on the phone, including calendars that
-     * are switched off for syncing on this phone (selecting one switches syncing on).
+     * All calendars the app can write to, of every account on the phone. Google calendars that are
+     * switched off for syncing on this phone often report no write access yet, so they are listed
+     * too, except Google's read-only ones (holidays, birthdays). Selecting one switches syncing on.
      */
     fun writableCalendars(): List<CalendarInfo> {
         val result = mutableListOf<CalendarInfo>()
         resolver.query(
             Calendars.CONTENT_URI,
             arrayOf(
-                Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME,
-                Calendars.ACCOUNT_TYPE, Calendars.CALENDAR_ACCESS_LEVEL, Calendars.SYNC_EVENTS, Calendars.VISIBLE,
+                Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE,
+                Calendars.CALENDAR_ACCESS_LEVEL, Calendars.SYNC_EVENTS, Calendars.VISIBLE, Calendars.OWNER_ACCOUNT,
             ),
-            "${Calendars.CALENDAR_ACCESS_LEVEL} >= ?",
-            arrayOf(Calendars.CAL_ACCESS_CONTRIBUTOR.toString()),
-            "${Calendars.ACCOUNT_NAME}, ${Calendars.CALENDAR_DISPLAY_NAME}"
+            null, null, null
         )?.use { c ->
             while (c.moveToNext()) {
+                val type = c.getString(3) ?: ""
+                val owner = c.getString(7) ?: ""
                 val synced = c.getInt(5) == 1 && c.getInt(6) == 1
-                result += CalendarInfo(c.getLong(0), c.getString(1) ?: "?", c.getString(2) ?: "", c.getString(3) ?: "", synced)
+                val writable = c.getInt(4) >= Calendars.CAL_ACCESS_CONTRIBUTOR ||
+                    (type == GOOGLE && !synced && !owner.endsWith(GOOGLE_READ_ONLY_SUFFIX))
+                if (writable) {
+                    result += CalendarInfo(c.getLong(0), c.getString(1) ?: "?", c.getString(2) ?: "", type, synced)
+                }
             }
         }
-        return result
+        // Per account: main calendar first, then the others by name.
+        return result.sortedWith(
+            compareBy<CalendarInfo>({ it.accountName.lowercase() }, { !it.isMain }, { it.name.lowercase() })
+        )
     }
 
     /** Switches syncing and visibility on, so events in this calendar reach Google. */
@@ -134,5 +149,9 @@ class CalendarStore(context: Context) {
 
     companion object {
         val ZONE: ZoneId = ZoneId.of("Europe/Berlin")
+        private const val GOOGLE = "com.google"
+
+        /** Holiday, birthday and other subscribed Google calendars, which cannot be written. */
+        private const val GOOGLE_READ_ONLY_SUFFIX = "v.calendar.google.com"
     }
 }
