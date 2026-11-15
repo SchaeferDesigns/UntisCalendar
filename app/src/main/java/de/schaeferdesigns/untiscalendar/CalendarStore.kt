@@ -1,16 +1,26 @@
 package de.schaeferdesigns.untiscalendar
 
+import android.accounts.Account
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.os.Bundle
+import android.provider.CalendarContract
 import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Reminders
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-data class CalendarInfo(val id: Long, val name: String, val account: String) {
-    override fun toString() = "$name ($account)"
+data class CalendarInfo(
+    val id: Long,
+    val name: String,
+    val accountName: String,
+    val accountType: String,
+    val synced: Boolean,
+) {
+    override fun toString() = if (synced) "$name ($accountName)" else "$name ($accountName, nicht synchronisiert)"
 }
 
 /** Reads and writes events through the Android calendar provider (synced to Google by Android). */
@@ -18,21 +28,67 @@ class CalendarStore(context: Context) {
 
     private val resolver = context.contentResolver
 
+    /**
+     * All calendars the app can write to, of every account on the phone, including calendars that
+     * are switched off for syncing on this phone (selecting one switches syncing on).
+     */
     fun writableCalendars(): List<CalendarInfo> {
         val result = mutableListOf<CalendarInfo>()
         resolver.query(
             Calendars.CONTENT_URI,
-            arrayOf(Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME),
+            arrayOf(
+                Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME,
+                Calendars.ACCOUNT_TYPE, Calendars.CALENDAR_ACCESS_LEVEL, Calendars.SYNC_EVENTS, Calendars.VISIBLE,
+            ),
             "${Calendars.CALENDAR_ACCESS_LEVEL} >= ?",
             arrayOf(Calendars.CAL_ACCESS_CONTRIBUTOR.toString()),
             "${Calendars.ACCOUNT_NAME}, ${Calendars.CALENDAR_DISPLAY_NAME}"
         )?.use { c ->
             while (c.moveToNext()) {
-                result += CalendarInfo(c.getLong(0), c.getString(1) ?: "?", c.getString(2) ?: "")
+                val synced = c.getInt(5) == 1 && c.getInt(6) == 1
+                result += CalendarInfo(c.getLong(0), c.getString(1) ?: "?", c.getString(2) ?: "", c.getString(3) ?: "", synced)
             }
         }
         return result
     }
+
+    /** Switches syncing and visibility on, so events in this calendar reach Google. */
+    fun enableSync(calendar: CalendarInfo) {
+        if (calendar.synced) return
+        val values = ContentValues().apply {
+            put(Calendars.SYNC_EVENTS, 1)
+            put(Calendars.VISIBLE, 1)
+        }
+        try {
+            resolver.update(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendar.id), values, null, null)
+        } catch (_: Exception) {
+            // Some calendar providers do not allow this; the user can still switch it on in Google Calendar.
+        }
+    }
+
+    /** Asks Android to sync now, which also fetches calendars newly created on the web. */
+    fun requestSync(accounts: Collection<Pair<String, String>>) {
+        val extras = Bundle().apply {
+            putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true)
+            putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true)
+        }
+        for ((name, type) in accounts) {
+            if (name.isBlank() || type.isBlank() || type == CalendarContract.ACCOUNT_TYPE_LOCAL) continue
+            try {
+                ContentResolver.requestSync(Account(name, type), CalendarContract.AUTHORITY, extras)
+            } catch (_: Exception) {
+                // Syncing is best effort.
+            }
+        }
+    }
+
+    /** Account of a calendar, for [requestSync]. */
+    fun accountOf(calendarId: Long): Pair<String, String>? =
+        resolver.query(
+            ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId),
+            arrayOf(Calendars.ACCOUNT_NAME, Calendars.ACCOUNT_TYPE),
+            null, null, null
+        )?.use { c -> if (c.moveToFirst()) (c.getString(0) ?: "") to (c.getString(1) ?: "") else null }
 
     fun insert(calendarId: Long, lesson: Lesson): Long {
         val values = values(lesson).apply { put(Events.CALENDAR_ID, calendarId) }

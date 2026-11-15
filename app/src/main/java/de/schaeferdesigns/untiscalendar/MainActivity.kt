@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -60,7 +61,7 @@ class MainActivity : AppCompatActivity() {
 
         syncButton.setOnClickListener { saveAndSync() }
         removeButton.setOnClickListener { confirmRemove() }
-        findViewById<Button>(R.id.reloadCalendars).setOnClickListener { loadCalendars() }
+        findViewById<Button>(R.id.reloadCalendars).setOnClickListener { refreshCalendarsFromGoogle() }
     }
 
     override fun onResume() {
@@ -83,11 +84,29 @@ class MainActivity : AppCompatActivity() {
             return
         }
         calendars = CalendarStore(this).writableCalendars()
-        calendarSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, calendars)
+        calendarSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, calendars).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
         val selected = calendars.indexOfFirst { it.id == settings.calendarId }
             .takeIf { it >= 0 }
             ?: calendars.indexOfFirst { it.name.contains("untis", ignoreCase = true) }
         if (selected >= 0) calendarSpinner.setSelection(selected)
+    }
+
+    /** Lets Android fetch the calendar list from Google, then shows it again. */
+    private fun refreshCalendarsFromGoogle() {
+        if (!hasCalendarPermission()) {
+            loadCalendars()
+            return
+        }
+        val store = CalendarStore(this)
+        store.requestSync(store.writableCalendars().map { it.accountName to it.accountType }.toSet())
+        status.text = getString(R.string.loading_calendars)
+        lifecycleScope.launch {
+            delay(CALENDAR_REFRESH_DELAY_MS)
+            loadCalendars()
+            status.text = getString(R.string.calendars_loaded, calendars.size)
+        }
     }
 
     private fun saveAndSync() {
@@ -106,6 +125,7 @@ class MainActivity : AppCompatActivity() {
         settings.username = username.text.toString().trim()
         if (password.text.isNotEmpty()) settings.password = password.text.toString()
         settings.calendarId = calendar.id
+        CalendarStore(this).enableSync(calendar)
         settings.autoSync = autoSync.isChecked
         password.text.clear()
         password.hint = getString(R.string.password_saved)
@@ -160,5 +180,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun toastStatus(message: String) {
         status.text = message
+    }
+
+    companion object {
+        private const val CALENDAR_REFRESH_DELAY_MS = 6_000L
     }
 }

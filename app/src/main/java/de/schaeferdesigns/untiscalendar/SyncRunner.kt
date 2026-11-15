@@ -93,6 +93,8 @@ object SyncRunner {
         state.entries.entries.removeIf { it.value.date.isBefore(today.minusDays(7)) }
         state.save(context)
         templates.save(planner.templates)
+        // Push the changes to Google right away instead of waiting for the next automatic sync.
+        if (added + changed + removed > 0) store.accountOf(settings.calendarId)?.let { store.requestSync(listOf(it)) }
 
         val confirmedUntil = planned.filter { it.plannedWeek == null }.maxOfOrNull { it.date }
         val time = LocalDateTime.now(CalendarStore.ZONE).format(DateTimeFormatter.ofPattern("dd.MM. HH:mm"))
