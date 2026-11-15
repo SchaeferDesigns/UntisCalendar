@@ -12,6 +12,11 @@
     <string name="reload_calendars">Kalender von Google neu laden</string>
     <string name="loading_calendars">Lade Kalenderliste von Google…</string>
     <string name="calendars_loaded">%1$d Kalender gefunden. Fehlt einer, kurz warten und erneut laden.</string>
+    <string name="section_week">A/B Woche</string>
+    <string name="week_hint">Woche ab Montag %1$s. Stimmt das nicht, zum Beispiel nach den Ferien, einfach die richtige Woche antippen. Danach geht es wieder abwechselnd weiter.</string>
+    <string name="week_a">A Woche</string>
+    <string name="week_b">B Woche</string>
+    <string name="week_changed">Woche ab %1$s ist jetzt %2$s Woche.</string>
     <string name="auto_sync">Automatisch jede Stunde abgleichen</string>
     <string name="sync_now">Speichern und jetzt synchronisieren</string>
     <string name="syncing">Synchronisiere…</string>

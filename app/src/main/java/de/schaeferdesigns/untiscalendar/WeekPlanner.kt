@@ -23,16 +23,66 @@ data class Slot(
     )
 }
 
+/** From [monday] on, weeks alternate starting with [type]. */
+data class WeekAnchor(val monday: LocalDate, val type: Char)
+
 /**
  * Decides what belongs in the calendar for every day: real Untis data where the school has
- * released it, otherwise the regular A/B timetable. A and B strictly alternate every week.
+ * released it, otherwise the regular A/B timetable. A and B alternate every week, starting
+ * from the latest [WeekAnchor]; a correction by the user adds a new anchor.
  * Also keeps the regular timetable up to date with what Untis delivers.
  */
-class WeekPlanner(val templates: MutableMap<String, List<Slot>>) {
+class WeekPlanner(
+    val templates: MutableMap<String, List<Slot>>,
+    /** When each template was last taken over from Untis. Missing for templates of older app versions. */
+    val learned: MutableMap<String, LocalDate> = mutableMapOf(),
+    val anchors: MutableList<WeekAnchor> = mutableListOf(DEFAULT_ANCHOR),
+) {
 
-    fun weekType(date: LocalDate): Char {
-        val weeks = ChronoUnit.WEEKS.between(REFERENCE_A_MONDAY, monday(date))
-        return if (Math.floorMod(weeks, 2L) == 0L) 'A' else 'B'
+    fun weekType(date: LocalDate): Char = weekType(date, anchors)
+
+    /**
+     * The user says the week starting [monday] is [type]. Alternation is restarted at the first
+     * Monday after the last school holidays before it, since holidays are what breaks the order.
+     * Timetables learned since then were stored under the wrong week and are moved over.
+     */
+    fun correctWeekType(monday: LocalDate, type: Char, holidays: Set<LocalDate>) {
+        if (weekType(monday) == type) return
+        val start = restartMonday(monday, holidays)
+        val startType = if (Math.floorMod(ChronoUnit.WEEKS.between(start, monday), 2L) == 0L) type else other(type)
+        val oldAnchors = anchors.toList()
+        anchors.removeAll { !it.monday.isBefore(start) }
+        anchors += WeekAnchor(start, startType)
+        anchors.sortBy { it.monday }
+        relabel(start, oldAnchors)
+    }
+
+    private fun relabel(start: LocalDate, oldAnchors: List<WeekAnchor>) {
+        data class Move(val from: String, val to: String, val slots: List<Slot>, val date: LocalDate)
+
+        val moves = templates.keys.mapNotNull { key ->
+            val date = learned[key]
+            when {
+                date != null && !date.isBefore(start) && weekType(date, oldAnchors) != weekType(date) ->
+                    Move(key, "${weekType(date)}${key.substring(1)}", templates.getValue(key), date)
+                // Learned by an older version without a date: most likely since the holidays, so flip it.
+                date == null && templates[key] != DefaultTimetable.templates[key] -> {
+                    val target = "${other(key[0])}${key.substring(1)}"
+                    val dated = listOf(start, start.plusWeeks(1)).first { weekType(it) == target[0] }
+                    Move(key, target, templates.getValue(key), dated.plusDays(key[1].digitToInt() - 1L))
+                }
+                else -> null
+            }
+        }
+        moves.forEach { templates.remove(it.from); learned.remove(it.from) }
+        for (move in moves) {
+            val existing = learned[move.to]
+            if (move.to !in templates || existing == null || existing.isBefore(move.date)) {
+                templates[move.to] = move.slots
+                learned[move.to] = move.date
+            }
+        }
+        moves.forEach { m -> if (m.from !in templates) DefaultTimetable.templates[m.from]?.let { templates[m.from] = it } }
     }
 
     /**
@@ -91,11 +141,47 @@ class WeekPlanner(val templates: MutableMap<String, List<Slot>>) {
         // A day with far fewer lessons than usual is a special day, not the new regular plan.
         if (old.isNotEmpty() && slots.size * 2 < old.size) return
         templates[key] = slots
+        learned[key] = date
     }
 
     companion object {
-        /** Monday of a known A week (KW 40 / 2026). */
-        val REFERENCE_A_MONDAY: LocalDate = LocalDate.of(2026, 9, 28)
+        /** KW 40 / 2026 was an A week. */
+        val DEFAULT_ANCHOR = WeekAnchor(LocalDate.of(2026, 9, 28), 'A')
+
+        fun other(type: Char) = if (type == 'A') 'B' else 'A'
+
+        fun weekType(date: LocalDate, anchors: List<WeekAnchor>): Char {
+            val m = monday(date)
+            val anchor = anchors.filter { !it.monday.isAfter(m) }.maxByOrNull { it.monday }
+                ?: anchors.minByOrNull { it.monday }
+                ?: DEFAULT_ANCHOR
+            val weeks = ChronoUnit.WEEKS.between(anchor.monday, m)
+            return if (Math.floorMod(weeks, 2L) == 0L) anchor.type else other(anchor.type)
+        }
+
+        /** First Monday after the last holidays of at least a full week before [monday], else [monday]. */
+        fun restartMonday(monday: LocalDate, holidays: Set<LocalDate>): LocalDate {
+            var day = monday.minusDays(1)
+            val limit = monday.minusWeeks(MAX_LOOKBACK_WEEKS)
+            while (day.isAfter(limit)) {
+                if (day in holidays && isSchoolDay(day)) {
+                    // Count the weekday holidays in the block ending here.
+                    var count = 0
+                    var d = day
+                    while (d in holidays || !isSchoolDay(d)) {
+                        if (isSchoolDay(d)) count++
+                        d = d.minusDays(1)
+                    }
+                    if (count >= 5) return monday(day).plusWeeks(1)
+                    day = d
+                } else {
+                    day = day.minusDays(1)
+                }
+            }
+            return monday
+        }
+
+        private const val MAX_LOOKBACK_WEEKS = 16L
 
         fun monday(date: LocalDate): LocalDate = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 

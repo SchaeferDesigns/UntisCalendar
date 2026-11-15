@@ -72,4 +72,65 @@ class WeekPlannerTest {
         assertEquals("SPORT", p.templates.getValue("A1").last().subject)
         assertEquals(p.templates, WeekPlanner.fromJson(WeekPlanner.toJson(p.templates)))
     }
+
+    private val autumnHolidays = (0L..4L).map { LocalDate.of(2026, 10, 26).plusDays(it) }.toSet()
+
+    @Test
+    fun correctionRestartsAfterHolidaysAndKeepsEarlierWeeks() {
+        val p = planner()
+        // Counter says B for the week of 16.11., the user says A.
+        assertEquals('B', p.weekType(LocalDate.of(2026, 11, 16)))
+        p.correctWeekType(LocalDate.of(2026, 11, 16), 'A', autumnHolidays)
+
+        assertEquals('A', p.weekType(LocalDate.of(2026, 11, 2)))   // first week after the holidays
+        assertEquals('B', p.weekType(LocalDate.of(2026, 11, 9)))
+        assertEquals('A', p.weekType(LocalDate.of(2026, 11, 16)))
+        assertEquals('B', p.weekType(LocalDate.of(2026, 11, 23)))
+        assertEquals('A', p.weekType(LocalDate.of(2026, 10, 12)))  // before the holidays unchanged
+        assertEquals('B', p.weekType(LocalDate.of(2026, 10, 19)))
+    }
+
+    @Test
+    fun correctionWithoutHolidaysStartsThisWeek() {
+        val p = planner()
+        p.correctWeekType(LocalDate.of(2026, 11, 16), 'A', emptySet())
+        assertEquals('A', p.weekType(LocalDate.of(2026, 11, 16)))
+        assertEquals('A', p.weekType(LocalDate.of(2026, 11, 9)))   // earlier weeks keep the old order
+    }
+
+    @Test
+    fun correctionMovesTimetablesLearnedUnderTheWrongWeek() {
+        val p = planner()
+        // Wednesday 11.11. counted as A, but really was a B week: B lessons got stored as A.
+        val wednesday = LocalDate.of(2026, 11, 11)
+        assertEquals('A', p.weekType(wednesday))
+        val bDay = DefaultTimetable.templates.getValue("B3").map {
+            it.toLesson(wednesday, 'B').copy(plannedWeek = null, subject = it.subject + " neu")
+        }
+        p.plan(listOf(wednesday), mapOf(wednesday to bDay), emptySet())
+        assertEquals("Psychologie neu", p.templates.getValue("A3").first().subject)
+
+        p.correctWeekType(LocalDate.of(2026, 11, 9), 'B', autumnHolidays)
+        assertEquals('B', p.weekType(wednesday))
+        assertEquals("Psychologie neu", p.templates.getValue("B3").first().subject)
+        assertEquals(DefaultTimetable.templates.getValue("A3"), p.templates.getValue("A3"))
+    }
+
+    @Test
+    fun undatedLearnedTimetablesAreFlipped() {
+        val templates = DefaultTimetable.templates.toMutableMap()
+        val learnedA = templates.getValue("A3").map { it.copy(subject = "alt") }
+        templates["A3"] = learnedA
+        val p = WeekPlanner(templates)
+        p.correctWeekType(LocalDate.of(2026, 11, 16), 'A', autumnHolidays)
+        assertEquals(learnedA, p.templates.getValue("B3"))
+        assertEquals(DefaultTimetable.templates.getValue("A3"), p.templates.getValue("A3"))
+    }
+
+    @Test
+    fun noChangeWhenWeekIsAlreadyRight() {
+        val p = planner()
+        p.correctWeekType(LocalDate.of(2026, 11, 16), 'B', autumnHolidays)
+        assertEquals(listOf(WeekPlanner.DEFAULT_ANCHOR), p.anchors)
+    }
 }

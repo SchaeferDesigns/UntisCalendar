@@ -33,6 +33,24 @@ object SyncRunner {
         }
     }
 
+    /** The week the user cares about: the current one, or the next one on the weekend. */
+    fun referenceMonday(today: LocalDate = LocalDate.now(CalendarStore.ZONE)): LocalDate =
+        if (WeekPlanner.isSchoolDay(today)) WeekPlanner.monday(today) else WeekPlanner.monday(today).plusWeeks(1)
+
+    suspend fun weekType(context: Context): Char = mutex.withLock {
+        withContext(Dispatchers.IO) { TemplateStore(context).loadPlanner().weekType(referenceMonday()) }
+    }
+
+    /** Correction by the user: the week starting [referenceMonday] is [type]. */
+    suspend fun setWeekType(context: Context, type: Char) = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val store = TemplateStore(context)
+            val planner = store.loadPlanner()
+            planner.correctWeekType(referenceMonday(), type, store.loadHolidays())
+            store.save(planner)
+        }
+    }
+
     private fun doSync(context: Context): String {
         val settings = Settings(context)
         if (!settings.isComplete) throw IllegalStateException("Einstellungen unvollständig.")
@@ -47,7 +65,7 @@ object SyncRunner {
         val (real, holidays) = fetch(settings, dates)
 
         val templates = TemplateStore(context)
-        val planner = WeekPlanner(templates.load())
+        val planner = templates.loadPlanner()
         val planned = planner.plan(dates, real, holidays)
         val desired = withKeys(planned)
 
@@ -92,7 +110,8 @@ object SyncRunner {
         // Past lessons stay in the calendar, but are no longer tracked.
         state.entries.entries.removeIf { it.value.date.isBefore(today.minusDays(7)) }
         state.save(context)
-        templates.save(planner.templates)
+        templates.save(planner)
+        templates.saveHolidays(holidays)
         // Push the changes to Google right away instead of waiting for the next automatic sync.
         if (added + changed + removed > 0) store.accountOf(settings.calendarId)?.let { store.requestSync(listOf(it)) }
 
@@ -101,7 +120,7 @@ object SyncRunner {
         val day = DateTimeFormatter.ofPattern("dd.MM.")
         return buildString {
             append("Zuletzt synchronisiert: $time Uhr\n")
-            append("Diese Woche: ${planner.weekType(today)} Woche\n")
+            append("Woche ab ${referenceMonday(today).format(day)}: ${planner.weekType(referenceMonday(today))} Woche\n")
             if (confirmedUntil != null) append("Untis Daten bis ${confirmedUntil.format(day)}, danach Stundenplan\n")
             append("${desired.size} Einträge, $added neu, $changed geändert, $removed entfernt")
         }
@@ -127,7 +146,7 @@ object SyncRunner {
         client.login(settings.username, settings.password)
         try {
             val holidays = try {
-                client.holidays(start, end)
+                client.holidays()
             } catch (_: UntisException) {
                 emptySet()
             }
@@ -157,16 +176,52 @@ object SyncRunner {
         generateSequence(start) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }.toList()
 }
 
-/** Persists the learned regular timetable. */
+/** Persists the learned regular timetable, the A/B order and the school holidays. */
 class TemplateStore(context: Context) {
     private val prefs = context.getSharedPreferences("template", Context.MODE_PRIVATE)
 
-    fun load(): MutableMap<String, List<Slot>> =
-        prefs.getString("templates", null)?.let { WeekPlanner.fromJson(it) }
+    fun loadPlanner(): WeekPlanner {
+        val templates = prefs.getString("templates", null)?.let { WeekPlanner.fromJson(it) }
             ?: DefaultTimetable.templates.toMutableMap()
+        val learned = mutableMapOf<String, LocalDate>()
+        prefs.getString("learned", null)?.let { raw ->
+            val json = JSONObject(raw)
+            for (key in json.keys()) learned[key] = LocalDate.parse(json.getString(key))
+        }
+        val anchors = mutableListOf<WeekAnchor>()
+        prefs.getString("anchors", null)?.let { raw ->
+            val json = JSONArray(raw)
+            for (i in 0 until json.length()) {
+                val o = json.getJSONObject(i)
+                anchors += WeekAnchor(LocalDate.parse(o.getString("monday")), o.getString("type")[0])
+            }
+        }
+        if (anchors.isEmpty()) anchors += WeekPlanner.DEFAULT_ANCHOR
+        return WeekPlanner(templates, learned, anchors)
+    }
 
-    fun save(templates: Map<String, List<Slot>>) {
-        prefs.edit().putString("templates", WeekPlanner.toJson(templates)).apply()
+    fun save(planner: WeekPlanner) {
+        val learned = JSONObject()
+        planner.learned.forEach { (key, date) -> learned.put(key, date.toString()) }
+        val anchors = JSONArray(planner.anchors.map {
+            JSONObject().put("monday", it.monday.toString()).put("type", it.type.toString())
+        })
+        prefs.edit()
+            .putString("templates", WeekPlanner.toJson(planner.templates))
+            .putString("learned", learned.toString())
+            .putString("anchors", anchors.toString())
+            .apply()
+    }
+
+    fun loadHolidays(): Set<LocalDate> {
+        val raw = prefs.getString("holidays", null) ?: return emptySet()
+        val json = JSONArray(raw)
+        return (0 until json.length()).map { LocalDate.parse(json.getString(it)) }.toSet()
+    }
+
+    fun saveHolidays(holidays: Set<LocalDate>) {
+        if (holidays.isEmpty()) return
+        prefs.edit().putString("holidays", JSONArray(holidays.map { it.toString() }).toString()).apply()
     }
 }
 

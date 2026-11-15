@@ -62,8 +62,8 @@ class UntisClient(server: String, private val school: String) {
         return call("getTimetable", JSONObject().put("options", options)) as JSONArray
     }
 
-    /** All days off (holidays, vacation) between [start] and [end]. */
-    fun holidays(start: LocalDate, end: LocalDate): Set<LocalDate> {
+    /** All days off (holidays, vacation) of the school year. */
+    fun holidays(): Set<LocalDate> {
         val result = mutableSetOf<LocalDate>()
         val array = call("getHolidays", JSONObject()) as JSONArray
         for (i in 0 until array.length()) {
@@ -71,7 +71,7 @@ class UntisClient(server: String, private val school: String) {
             var day = LocalDate.parse(o.getInt("startDate").toString(), DATE)
             val last = LocalDate.parse(o.getInt("endDate").toString(), DATE)
             while (!day.isAfter(last)) {
-                if (!day.isBefore(start) && !day.isAfter(end)) result += day
+                result += day
                 day = day.plusDays(1)
             }
         }

@@ -13,12 +13,14 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.time.format.DateTimeFormatter
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,6 +34,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var syncButton: Button
     private lateinit var removeButton: Button
+    private lateinit var weekToggle: MaterialButtonToggleGroup
+    private lateinit var weekHint: TextView
+
+    /** Set while the toggle is updated from code, so it does not count as a correction. */
+    private var updatingWeek = false
 
     private var calendars: List<CalendarInfo> = emptyList()
 
@@ -52,6 +59,8 @@ class MainActivity : AppCompatActivity() {
         status = findViewById(R.id.status)
         syncButton = findViewById(R.id.syncButton)
         removeButton = findViewById(R.id.removeButton)
+        weekToggle = findViewById(R.id.weekToggle)
+        weekHint = findViewById(R.id.weekHint)
 
         server.setText(settings.server)
         school.setText(settings.school)
@@ -62,11 +71,15 @@ class MainActivity : AppCompatActivity() {
         syncButton.setOnClickListener { saveAndSync() }
         removeButton.setOnClickListener { confirmRemove() }
         findViewById<Button>(R.id.reloadCalendars).setOnClickListener { refreshCalendarsFromGoogle() }
+        weekToggle.addOnButtonCheckedListener { _, id, checked ->
+            if (checked && !updatingWeek) correctWeek(if (id == R.id.weekA) 'A' else 'B')
+        }
     }
 
     override fun onResume() {
         super.onResume()
         status.text = settings.lastStatus
+        showWeek()
         if (hasCalendarPermission()) {
             loadCalendars()
         } else {
@@ -91,6 +104,29 @@ class MainActivity : AppCompatActivity() {
             .takeIf { it >= 0 }
             ?: calendars.indexOfFirst { it.name.contains("untis", ignoreCase = true) }
         if (selected >= 0) calendarSpinner.setSelection(selected)
+    }
+
+    private fun showWeek() {
+        weekHint.text = getString(R.string.week_hint, SyncRunner.referenceMonday().format(DAY))
+        lifecycleScope.launch {
+            val type = SyncRunner.weekType(this@MainActivity)
+            updatingWeek = true
+            weekToggle.check(if (type == 'A') R.id.weekA else R.id.weekB)
+            updatingWeek = false
+        }
+    }
+
+    /** Saves the corrected A/B week and puts the changed weeks into the calendar right away. */
+    private fun correctWeek(type: Char) {
+        lifecycleScope.launch {
+            SyncRunner.setWeekType(this@MainActivity, type)
+            val message = getString(R.string.week_changed, SyncRunner.referenceMonday().format(DAY), type.toString())
+            if (settings.isComplete) {
+                runSync(message)
+            } else {
+                status.text = message
+            }
+        }
     }
 
     /** Lets Android fetch the calendar list from Google, then shows it again. */
@@ -132,7 +168,11 @@ class MainActivity : AppCompatActivity() {
 
         if (autoSync.isChecked) SyncWorker.schedule(this) else SyncWorker.cancel(this)
 
-        setBusy(true, getString(R.string.syncing))
+        runSync()
+    }
+
+    private fun runSync(prefix: String? = null) {
+        setBusy(true, listOfNotNull(prefix, getString(R.string.syncing)).joinToString("\n"))
         lifecycleScope.launch {
             val message = try {
                 SyncRunner.sync(this@MainActivity)
@@ -142,7 +182,7 @@ class MainActivity : AppCompatActivity() {
                 "Fehler: ${e.message}"
             }
             settings.lastStatus = message
-            setBusy(false, message)
+            setBusy(false, listOfNotNull(prefix, message).joinToString("\n"))
         }
     }
 
@@ -175,6 +215,7 @@ class MainActivity : AppCompatActivity() {
     private fun setBusy(busy: Boolean, message: String) {
         syncButton.isEnabled = !busy
         removeButton.isEnabled = !busy
+        weekToggle.isEnabled = !busy
         status.text = message
     }
 
@@ -184,5 +225,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val CALENDAR_REFRESH_DELAY_MS = 6_000L
+        private val DAY = DateTimeFormatter.ofPattern("dd.MM.")
     }
 }

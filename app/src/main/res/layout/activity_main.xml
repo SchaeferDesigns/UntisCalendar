@@ -93,6 +93,42 @@
             android:layout_height="wrap_content"
             android:text="@string/reload_calendars" />
 
+        <TextView
+            style="@style/Label"
+            android:text="@string/section_week" />
+
+        <TextView
+            android:id="@+id/weekHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceBodySmall" />
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/weekToggle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            xmlns:app="http://schemas.android.com/apk/res-auto">
+
+            <Button
+                android:id="@+id/weekA"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/week_a" />
+
+            <Button
+                android:id="@+id/weekB"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/week_b" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/autoSync"
             android:layout_width="match_parent"
